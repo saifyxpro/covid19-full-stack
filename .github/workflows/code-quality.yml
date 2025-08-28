@@ -1,0 +1,221 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 1' # Weekly on Monday
+
+jobs:
+  # Code Quality Analysis
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 📦 Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          server/node_modules
+          client/node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: 📦 Install dependencies
+      run: |
+        cd server && npm ci
+        cd ../client && npm ci
+
+    - name: 🔍 ESLint Analysis
+      run: |
+        echo "🔍 Running ESLint on server..."
+        cd server && npm run lint -- --format json --output-file ../eslint-server.json || true
+        echo "🔍 Running ESLint on client..."
+        cd ../client && npm run lint -- --format json --output-file ../eslint-client.json || true
+
+    - name: 🧪 Test Coverage
+      run: |
+        echo "🧪 Running server tests with coverage..."
+        cd server && npm run test:coverage
+        echo "🧪 Running client tests with coverage..."
+        cd ../client && npm test -- --coverage --watchAll=false
+
+    - name: 📊 SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    - name: 📈 Codacy Analysis
+      uses: codacy/codacy-analysis-cli-action@master
+      with:
+        project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        upload: true
+        max-allowed-issues: 2147483647
+
+  # Dependency Check
+  dependency-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 🛡️ Server Security Audit
+      run: |
+        cd server
+        npm audit --audit-level high
+        npm audit --json > ../server-audit.json || true
+
+    - name: 🛡️ Client Security Audit
+      run: |
+        cd client
+        npm audit --audit-level high
+        npm audit --json > ../client-audit.json || true
+
+    - name: 📦 Check for outdated packages
+      run: |
+        echo "📦 Checking server packages..."
+        cd server && npm outdated --json > ../server-outdated.json || true
+        echo "📦 Checking client packages..."
+        cd ../client && npm outdated --json > ../client-outdated.json || true
+
+    - name: 📊 Upload audit results
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-audits
+        path: |
+          server-audit.json
+          client-audit.json
+          server-outdated.json
+          client-outdated.json
+
+  # Performance Testing
+  performance:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 📦 Install dependencies
+      run: |
+        cd server && npm ci
+        cd ../client && npm ci
+
+    - name: 🏗️ Build client
+      run: |
+        cd client
+        npm run build
+
+    - name: 🚀 Start server for testing
+      run: |
+        cd server
+        npm start &
+        sleep 10
+      env:
+        NODE_ENV: production
+        MONGODB_URI: mongodb://localhost:27017/covid19_perf_test
+
+    - name: ⚡ Run Lighthouse CI
+      uses: treosh/lighthouse-ci-action@v9
+      with:
+        configPath: './lighthouse-ci.json'
+        uploadArtifacts: true
+        temporaryPublicStorage: true
+
+  # Bundle Analysis
+  bundle-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 📦 Install client dependencies
+      run: |
+        cd client
+        npm ci
+
+    - name: 📊 Analyze bundle size
+      run: |
+        cd client
+        npm run build
+        npx webpack-bundle-analyzer build/static/js/*.js --report --mode static --report-filename ../bundle-report.html
+
+    - name: 📊 Upload bundle analysis
+      uses: actions/upload-artifact@v3
+      with:
+        name: bundle-analysis
+        path: bundle-report.html
+
+  # Accessibility Testing
+  accessibility:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 📦 Install client dependencies
+      run: |
+        cd client
+        npm ci
+
+    - name: 🏗️ Build client
+      run: |
+        cd client
+        npm run build
+
+    - name: ♿ Run accessibility tests
+      run: |
+        cd client
+        npm run test:a11y || true
+
+    - name: ♿ Axe accessibility check
+      uses: dequelabs/axe-action@v2.1-0
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}

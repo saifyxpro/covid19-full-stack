@@ -1,0 +1,13 @@
+{
+  "plugins": {
+    "autoprefixer": {},
+    "postcss-custom-properties": {
+      "preserve": false
+    },
+    "postcss-nested": {},
+    "postcss-custom-media": {},
+    "cssnano": {
+      "preset": "default"
+    }
+  }
+}

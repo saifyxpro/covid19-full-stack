@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: covid-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./dummy_statistics.json:/docker-entrypoint-initdb.d/dummy_statistics.json
+    environment:
+      MONGO_INITDB_DATABASE: covid-19
+
+  server:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: covid-server
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    depends_on:
+      - mongodb
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/covid-19
+      - PORT=9000
+    volumes:
+      - ./server/logs:/app/logs
+      - ./server/temp:/app/temp
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: covid-client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    environment:
+      - REACT_APP_API_URL=http://localhost:9000/api
+
+volumes:
+  mongodb_data:

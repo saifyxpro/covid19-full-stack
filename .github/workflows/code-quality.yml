@@ -100,7 +100,7 @@ jobs:
         cd ../client && npm outdated --json > ../client-outdated.json || true
 
     - name: 📊 Upload audit results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-audits
         path: |
@@ -181,7 +181,7 @@ jobs:
         npx webpack-bundle-analyzer build/static/js/*.js --report --mode static --report-filename ../bundle-report.html
 
     - name: 📊 Upload bundle analysis
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: bundle-analysis
         path: bundle-report.html
